@@ -1,6 +1,7 @@
 #pragma once
 
 #include <fstream>
+#include <type_traits>
 #include <vector>
 
 #include "../Types.h"
@@ -38,6 +39,16 @@ namespace Gorgon :: Containers {
             }
         };
 
+        enum class NormalizeNegative {
+            Clamp,
+            Abs
+        };
+
+        enum class NormalizeFit {
+            Clamp,
+            Stretch
+        };
+
         /// This class is a container for image data. It supports different color modes and access to the
         /// underlying data through () operator. This object implements move semantics. Since copy constructor is
         /// expensive, it is deleted against accidental use. If a copy of the object is required, use Duplicate function.
@@ -54,7 +65,7 @@ namespace Gorgon :: Containers {
             /// does not initialize data inside the image
             basic_Image(const Geometry::Size &size, Graphics::ColorMode mode) : size(size), mode(mode) {
                 cpp=Graphics::GetChannelsPerPixel(mode);
-                data=(Byte*)malloc(size.Area()*cpp*sizeof(T_));
+                data=(T_*)malloc(size.Area()*cpp*sizeof(T_));
 
                 alphaloc = Graphics::HasAlpha(mode) ? Graphics::GetAlphaIndex(mode) : -1;
             }
@@ -114,7 +125,7 @@ namespace Gorgon :: Containers {
                     free(data);
                 }
                 
-                data=(Byte*)malloc(size.Area()*cpp*sizeof(T_));
+                data=(T_*)malloc(size.Area()*cpp*sizeof(T_));
             }
 
             /// Assigns the image to the copy of the given data. Ownership of the given data
@@ -124,7 +135,7 @@ namespace Gorgon :: Containers {
             /// This function does not perform any checks for the data size while copying it.
             /// If width or height is 0, the newdata is not accessed and this method effectively
             /// Destroys the current image. In this case, both width and height should be specified as 0.
-            void Assign(Byte *newdata, const Geometry::Size &size, Graphics::ColorMode mode) {
+            void Assign(T_ *newdata, const Geometry::Size &size, Graphics::ColorMode mode) {
 #ifndef NDEBUG
                 if(!size.IsValid())
                     throw std::runtime_error("basic_Image size cannot be negative");
@@ -139,7 +150,7 @@ namespace Gorgon :: Containers {
                 }
                 
                 if(size.Area()*cpp>0) {
-                    data=(Byte*)malloc(size.Area()*cpp*sizeof(T_));
+                    data=(T_*)malloc(size.Area()*cpp*sizeof(T_));
                     memcpy(data, newdata, size.Area()*cpp*sizeof(T_));
                 }
                 else {
@@ -152,7 +163,7 @@ namespace Gorgon :: Containers {
             /// Assume function. The size and color mode of the image stays the same. The given 
             /// data should have the size of width*height*Graphics::GetBytesPerPixel(mode)*sizeof(T_). 
             /// This function does not perform any checks for the data size while copying it.t
-            void Assign(Byte *newdata) {
+            void Assign(T_ *newdata) {
                 memcpy(data, newdata, size.Area()*cpp*sizeof(T_));
             }
 
@@ -163,7 +174,7 @@ namespace Gorgon :: Containers {
             /// newdata could be nullptr however, in this case
             /// width, height should be 0. mode is not assumed to be ColorMode::Invalid while
             /// the image is empty, therefore it could be specified as any value.
-            void Assume(Byte *newdata, const Geometry::Size &size, Graphics::ColorMode mode) {
+            void Assume(T_ *newdata, const Geometry::Size &size, Graphics::ColorMode mode) {
 #ifndef NDEBUG
                 if(!size.IsValid())
                     throw std::runtime_error("basic_Image size cannot be negative");
@@ -183,7 +194,7 @@ namespace Gorgon :: Containers {
             /// Assumes the ownership of the given data. The size and color mode of the image stays the same.
             /// The given data should have the size of width*height*Graphics::GetBytesPerPixel(mode)*sizeof(T_).
             /// This function does not perform any checks for the data size while assuming it.
-            void Assume(Byte *newdata) {
+            void Assume(T_ *newdata) {
                 if(data && data!=newdata) {
                     free(data);
                 }
@@ -192,7 +203,7 @@ namespace Gorgon :: Containers {
             }
 
             /// Returns and disowns the current data buffer. If image is empty, this method will return a nullptr.
-            Byte *Release() {
+            T_ *Release() {
                 auto temp=data;
                 data=nullptr;
                 Destroy();
@@ -235,12 +246,12 @@ namespace Gorgon :: Containers {
             }
 
             /// Returns the raw data pointer
-            Byte *RawData() {
+            T_ *RawData() {
                 return data;
             }
 
             /// Returns the raw data pointer
-            const Byte *RawData() const {
+            const T_ *RawData() const {
                 return data;
             }
 
@@ -257,7 +268,7 @@ namespace Gorgon :: Containers {
 
                 case Graphics::ColorMode::Grayscale_Alpha: {
                     auto pdata = data;
-                    data = (Byte*)malloc(size.Area()*4*sizeof(T_));
+                    data = (T_*)malloc(size.Area()*4*sizeof(T_));
 
                     for(int i=0; i<size.Area(); i++) {
                         data[i*4+0] = pdata[i*2+0];
@@ -265,13 +276,13 @@ namespace Gorgon :: Containers {
                         data[i*4+2] = pdata[i*2+0];
                         data[i*4+3] = pdata[i*2+1];
                     }
-                    delete pdata;
+                    free(pdata);
                 }
                 break;
 
                 case Graphics::ColorMode::Grayscale: {
                     auto pdata = data;
-                    data = (Byte*)malloc(size.Area()*4*sizeof(T_));
+                    data = (T_*)malloc(size.Area()*4*sizeof(T_));
 
                     for(int i=0; i<size.Area(); i++) {
                         data[i*4+0] = pdata[i+0];
@@ -279,13 +290,13 @@ namespace Gorgon :: Containers {
                         data[i*4+2] = pdata[i+0];
                         data[i*4+3] = 255;
                     }
-                    delete pdata;
+                    free(pdata);
                 }
                 break;
 
                 case Graphics::ColorMode::Alpha: {
                     auto pdata = data;
-                    data = (Byte*)malloc(size.Area()*4*sizeof(T_));
+                    data = (T_*)malloc(size.Area()*4*sizeof(T_));
 
                     for(int i=0; i<size.Area(); i++) {
                         data[i*4+0] = 255;
@@ -293,13 +304,13 @@ namespace Gorgon :: Containers {
                         data[i*4+2] = 255;
                         data[i*4+3] = pdata[i+0];
                     }
-                    delete pdata;
+                    free(pdata);
                 }
                 break;
 
                 case Graphics::ColorMode::RGB: {
                     auto pdata = data;
-                    data = (Byte*)malloc(size.Area()*4*sizeof(T_));
+                    data = (T_*)malloc(size.Area()*4*sizeof(T_));
 
                     for(int i=0; i<size.Area(); i++) {
                         data[i*4+0] = pdata[i*3+0];
@@ -307,13 +318,13 @@ namespace Gorgon :: Containers {
                         data[i*4+2] = pdata[i*3+2];
                         data[i*4+3] = 255;
                     }
-                    delete pdata;
+                    free(pdata);
                 }
                 break;
 
                 case Graphics::ColorMode::BGR: {
                     auto pdata = data;
-                    data = (Byte*)malloc(size.Area()*4*sizeof(T_));
+                    data = (T_*)malloc(size.Area()*4*sizeof(T_));
 
                     for(int i=0; i<size.Area(); i++) {
                         data[i*4+0] = pdata[i*3+2];
@@ -321,7 +332,7 @@ namespace Gorgon :: Containers {
                         data[i*4+2] = pdata[i*3+0];
                         data[i*4+3] = 255;
                     }
-                    delete pdata;
+                    free(pdata);
                 }
                 break;
                 
@@ -351,8 +362,8 @@ namespace Gorgon :: Containers {
                 if(target.Y > dest.GetHeight()) return false;
                 
                 int dw = dest.GetWidth(), dh = dest.GetHeight();
-                Byte *dd = dest.RawData();
-                const Byte *sd = RawData();
+                T_ *dd = dest.RawData();
+                const T_ *sd = RawData();
                 
                 for(int y=0; y<GetHeight(); y++) {
                     //out of pixels to copy
@@ -402,8 +413,8 @@ namespace Gorgon :: Containers {
                 
                 int dw = dest.GetWidth();
                 int sw = source.Width();
-                Byte *dd = dest.RawData();
-                const Byte *sd = RawData();
+                T_ *dd = dest.RawData();
+                const T_ *sd = RawData();
                 
                 for(int y=source.Top; y<source.Bottom; y++) {
                     int si = (y * size.Width + source.Left) * cpp;
@@ -1168,6 +1179,7 @@ namespace Gorgon :: Containers {
             }
 
             /// Imports a given bitmap file. BMP RLE compression and colorspaces are not supported.
+            /// Only works with Byte images for now.
             bool ImportBMP(std::istream &file, bool dib = false) {
                 using namespace IO;
 
@@ -1460,7 +1472,8 @@ namespace Gorgon :: Containers {
 
             /// Exports the image as a bitmap. RGB is exported as 24-bit, RGBA, BGR, BGRA is exported
             /// as 32-bit, Grayscale exported as 8-bit, Grayscale alpha, alpha only is exported as
-            /// 16-bit
+            /// 16-bit.
+            /// Only works with Byte images for now.
             bool ExportBMP(const std::string &filename, bool usev4 = false, bool dib = false) {
                 std::ofstream file(filename, std::ios::binary);
 
@@ -1471,7 +1484,8 @@ namespace Gorgon :: Containers {
 
             /// Exports the image as a bitmap. RGB is exported as 24-bit, RGBA, BGR, BGRA is exported
             /// as 32-bit, Grayscale exported as 8-bit, Grayscale alpha, alpha only is exported as
-            /// 16-bit
+            /// 16-bit.
+            /// Only works with Byte images for now.
             bool ExportBMP(std::ostream &file, bool usev4 = false, bool dib = false) {
                 using namespace IO;
                 using Graphics::ColorMode;
@@ -1683,7 +1697,7 @@ namespace Gorgon :: Containers {
 
             /// Provides access to the given component in x and y coordinates. This
             /// function performs bounds checking only on debug mode.
-            Byte &operator()(const Geometry::Point &p, unsigned component=0) {
+            T_ &operator()(const Geometry::Point &p, unsigned component=0) {
 #ifndef NDEBUG
                 if(p.X<0 || p.Y<0 || p.X>=size.Width || p.Y>=size.Height || component>=cpp) {
                     throw std::runtime_error("Index out of bounds");
@@ -1694,7 +1708,7 @@ namespace Gorgon :: Containers {
 
             /// Provides access to the given component in x and y coordinates. This
             /// function performs bounds checking only on debug mode.
-            Byte operator()(const Geometry::Point &p, unsigned component=0) const {
+            T_ operator()(const Geometry::Point &p, unsigned component=0) const {
 #ifndef NDEBUG
                 if(p.X<0 || p.Y<0 || p.X>=size.Width || p.Y>=size.Height || component>=cpp) {
                     throw std::runtime_error("Index out of bounds");
@@ -1706,7 +1720,7 @@ namespace Gorgon :: Containers {
             /// Provides access to the given component in x and y coordinates. This
             /// function returns 0 if the given coordinates are out of bounds. This
             /// function works slower than the () operator.
-            Byte Get(const Geometry::Point &p, unsigned component = 0) const {
+            T_ Get(const Geometry::Point &p, unsigned component = 0) const {
                 if (p.X < 0 || p.Y < 0 || p.X >= size.Width || p.Y >= size.Height || component >= cpp) {
                     return 0;
                 }
@@ -1717,7 +1731,7 @@ namespace Gorgon :: Containers {
             /// Provides access to the given component in x and y coordinates. This
             /// function returns 0 if the given coordinates are out of bounds. This
             /// function works slower than the () operator.
-            Byte Get(const Geometry::Point &p, Byte def, unsigned component = 0) const {
+            T_ Get(const Geometry::Point &p, T_ def, unsigned component = 0) const {
                 if (p.X < 0 || p.Y < 0 || p.X >= size.Width || p.Y >= size.Height || component >= cpp) {
                     return def;
                 }
@@ -1727,7 +1741,7 @@ namespace Gorgon :: Containers {
 
             /// Provides access to the given component in x and y coordinates. This
             /// function performs bounds checking only on debug mode.
-            Byte &operator()(int x, int y, unsigned component=0) {
+            T_ &operator()(int x, int y, unsigned component=0) {
 #ifndef NDEBUG
                 if(x<0 || y<0 || x>=size.Width || y>=size.Height || component>=cpp) {
                     throw std::runtime_error("Index out of bounds");
@@ -1738,7 +1752,7 @@ namespace Gorgon :: Containers {
 
             /// Provides access to the given component in x and y coordinates. This
             /// function performs bounds checking only on debug mode.
-            Byte operator()(int x, int y, unsigned component=0) const {
+            T_ operator()(int x, int y, unsigned component=0) const {
 #ifndef NDEBUG
                 if(x<0 || y<0 || x>=size.Width || y>=size.Height || component>=cpp) {
                     throw std::runtime_error("Index out of bounds");
@@ -1750,7 +1764,7 @@ namespace Gorgon :: Containers {
             /// Provides access to the given component in x and y coordinates. This
             /// function returns 0 if the given coordinates are out of bounds. This
             /// function works slower than the () operator.
-            Byte Get(int x, int y, unsigned component=0) const {
+            T_ Get(int x, int y, unsigned component=0) const {
                 if(x<0 || y<0 || x>=size.Width || y>=size.Height || component>=cpp) {
                     return 0;
                 }
@@ -1761,13 +1775,13 @@ namespace Gorgon :: Containers {
             /// Returns the alpha at the given location. If the given location does not exits
             /// this function will return 0. If there is no alpha channel, image is assumed
             /// to be opaque.
-            Byte GetAlphaAt(int x, int y) const {
+            T_ GetAlphaAt(int x, int y) const {
                 if(x<0 || y<0 || x>=size.Width || y>=size.Height) {
                     return 0;
                 }
 
                 if(alphaloc == -1)
-                    return 255;
+                    return static_cast<T_>(255);
 
                 return data[cpp*(size.Width*y+x)+alphaloc];
             }
@@ -1777,26 +1791,49 @@ namespace Gorgon :: Containers {
             /// to be opaque.
             Graphics::RGBA GetRGBAAt(int x, int y) const {
                 if(x<0 || y<0 || x>=size.Width || y>=size.Height) {
-                    return 0;
+                    return 0x00000000;
                 }
                 
-                switch(mode) {
-                    case Graphics::ColorMode::Alpha:
-                        return {255, 255, 255, Byte((*this)(x, y, 0))};
-                    case Graphics::ColorMode::Grayscale_Alpha:
-                        return {Byte((*this)(x, y, 0)), Byte((*this)(x, y, 0)), Byte((*this)(x, y, 0)), Byte((*this)(x, y, 1))};
-                    case Graphics::ColorMode::Grayscale:
-                        return {Byte((*this)(x, y, 0)), Byte((*this)(x, y, 0)), Byte((*this)(x, y, 0)), 255};
-                    case Graphics::ColorMode::RGB:
-                        return {Byte((*this)(x, y, 0)), Byte((*this)(x, y, 1)), Byte((*this)(x, y, 2)), 255};
-                    case Graphics::ColorMode::BGR:
-                        return {Byte((*this)(x, y, 2)), Byte((*this)(x, y, 1)), Byte((*this)(x, y, 0)), 255};
-                    case Graphics::ColorMode::RGBA:
-                        return {Byte((*this)(x, y, 0)), Byte((*this)(x, y, 1)), Byte((*this)(x, y, 2)), Byte((*this)(x, y, 3))};
-                    case Graphics::ColorMode::BGRA:
-                        return {Byte((*this)(x, y, 2)), Byte((*this)(x, y, 1)), Byte((*this)(x, y, 0)), Byte((*this)(x, y, 3))};
-                    default:
-                        return 0;
+                if constexpr (std::is_floating_point_v<T_>) {
+
+                    switch(mode) {
+                        case Graphics::ColorMode::Alpha:
+                            return {255, 255, 255, Byte(std::round((*this)(x, y, 0)*255.f))};
+                        case Graphics::ColorMode::Grayscale_Alpha:
+                            return {Byte(std::round((*this)(x, y, 0)*255.f)), Byte(std::round((*this)(x, y, 0)*255.f)), Byte(std::round((*this)(x, y, 0)*255.f)), Byte(std::round((*this)(x, y, 1)*255.f))};
+                        case Graphics::ColorMode::Grayscale:
+                            return {Byte(std::round((*this)(x, y, 0)*255.f)), Byte(std::round((*this)(x, y, 0)*255.f)), Byte(std::round((*this)(x, y, 0)*255.f)), 255};
+                        case Graphics::ColorMode::RGB:
+                            return {Byte(std::round((*this)(x, y, 0)*255.f)), Byte(std::round((*this)(x, y, 1)*255.f)), Byte(std::round((*this)(x, y, 2)*255.f)), 255};
+                        case Graphics::ColorMode::BGR:
+                            return {Byte(std::round((*this)(x, y, 2)*255.f)), Byte(std::round((*this)(x, y, 1)*255.f)), Byte(std::round((*this)(x, y, 0)*255.f)), 255};
+                        case Graphics::ColorMode::RGBA:
+                            return {Byte(std::round((*this)(x, y, 0)*255.f)), Byte(std::round((*this)(x, y, 1)*255.f)), Byte(std::round((*this)(x, y, 2)*255.f)), Byte(std::round((*this)(x, y, 3)*255.f))};
+                        case Graphics::ColorMode::BGRA:
+                            return {Byte(std::round((*this)(x, y, 2)*255.f)), Byte(std::round((*this)(x, y, 1)*255.f)), Byte(std::round((*this)(x, y, 0)*255.f)), Byte(std::round((*this)(x, y, 3)*255.f))};
+                        default:
+                            return 0;
+                    }
+                }
+                else {
+                    switch(mode) {
+                        case Graphics::ColorMode::Alpha:
+                            return {255, 255, 255, Byte((*this)(x, y, 0))};
+                        case Graphics::ColorMode::Grayscale_Alpha:
+                            return {Byte((*this)(x, y, 0)), Byte((*this)(x, y, 0)), Byte((*this)(x, y, 0)), Byte((*this)(x, y, 1))};
+                        case Graphics::ColorMode::Grayscale:
+                            return {Byte((*this)(x, y, 0)), Byte((*this)(x, y, 0)), Byte((*this)(x, y, 0)), 255};
+                        case Graphics::ColorMode::RGB:
+                            return {Byte((*this)(x, y, 0)), Byte((*this)(x, y, 1)), Byte((*this)(x, y, 2)), 255};
+                        case Graphics::ColorMode::BGR:
+                            return {Byte((*this)(x, y, 2)), Byte((*this)(x, y, 1)), Byte((*this)(x, y, 0)), 255};
+                        case Graphics::ColorMode::RGBA:
+                            return {Byte((*this)(x, y, 0)), Byte((*this)(x, y, 1)), Byte((*this)(x, y, 2)), Byte((*this)(x, y, 3))};
+                        case Graphics::ColorMode::BGRA:
+                            return {Byte((*this)(x, y, 2)), Byte((*this)(x, y, 1)), Byte((*this)(x, y, 0)), Byte((*this)(x, y, 3))};
+                        default:
+                            return 0;
+                    }
                 }
             }
 
@@ -1813,42 +1850,82 @@ namespace Gorgon :: Containers {
                 if(x<0 || y<0 || x>=size.Width || y>=size.Height) {
                     return;
                 }
-                
-                switch(mode) {
-                    case Graphics::ColorMode::Alpha:
-                        (*this)(x, y, 0) = color.A;
-                        break;
-                    case Graphics::ColorMode::Grayscale_Alpha:
-                        (*this)(x, y, 0) = color.Luminance();
-                        (*this)(x, y, 1) = color.A;
-                        break;
-                    case Graphics::ColorMode::Grayscale:
-                        (*this)(x, y, 0) = color.Luminance();
-                        break;
-                    case Graphics::ColorMode::RGB:
-                        (*this)(x, y, 0) = color.R;
-                        (*this)(x, y, 1) = color.G;
-                        (*this)(x, y, 2) = color.B;
-                        break;
-                    case Graphics::ColorMode::BGR:
-                        (*this)(x, y, 2) = color.R;
-                        (*this)(x, y, 1) = color.G;
-                        (*this)(x, y, 0) = color.B;
-                        break;
-                    case Graphics::ColorMode::RGBA:
-                        (*this)(x, y, 0) = color.R;
-                        (*this)(x, y, 1) = color.G;
-                        (*this)(x, y, 2) = color.B;
-                        (*this)(x, y, 3) = color.A;
-                        break;
-                    case Graphics::ColorMode::BGRA:
-                        (*this)(x, y, 2) = color.R;
-                        (*this)(x, y, 1) = color.G;
-                        (*this)(x, y, 0) = color.B;
-                        (*this)(x, y, 3) = color.A;
-                        break;
-                    default:
-                        ;
+                    
+                if constexpr (std::is_floating_point_v<T_>) {
+                    switch(mode) {
+                        case Graphics::ColorMode::Alpha:
+                            (*this)(x, y, 0) = color.A / 255.f;
+                            break;
+                        case Graphics::ColorMode::Grayscale_Alpha:
+                            (*this)(x, y, 0) = color.Luminance() / 255.f;
+                            (*this)(x, y, 1) = color.A / 255.f;
+                            break;
+                        case Graphics::ColorMode::Grayscale:
+                            (*this)(x, y, 0) = color.Luminance() / 255.f;
+                            break;
+                        case Graphics::ColorMode::RGB:
+                            (*this)(x, y, 0) = color.R / 255.f;
+                            (*this)(x, y, 1) = color.G / 255.f;
+                            (*this)(x, y, 2) = color.B / 255.f;
+                            break;
+                        case Graphics::ColorMode::BGR:
+                            (*this)(x, y, 2) = color.R / 255.f;
+                            (*this)(x, y, 1) = color.G / 255.f;
+                            (*this)(x, y, 0) = color.B / 255.f;
+                            break;
+                        case Graphics::ColorMode::RGBA:
+                            (*this)(x, y, 0) = color.R / 255.f;
+                            (*this)(x, y, 1) = color.G / 255.f;
+                            (*this)(x, y, 2) = color.B / 255.f;
+                            (*this)(x, y, 3) = color.A / 255.f;
+                            break;
+                        case Graphics::ColorMode::BGRA:
+                            (*this)(x, y, 2) = color.R / 255.f;
+                            (*this)(x, y, 1) = color.G / 255.f;
+                            (*this)(x, y, 0) = color.B / 255.f;
+                            (*this)(x, y, 3) = color.A / 255.f;
+                            break;
+                        default:
+                            ;
+                    }
+                }
+                else {
+                    switch(mode) {
+                        case Graphics::ColorMode::Alpha:
+                            (*this)(x, y, 0) = color.A;
+                            break;
+                        case Graphics::ColorMode::Grayscale_Alpha:
+                            (*this)(x, y, 0) = color.Luminance();
+                            (*this)(x, y, 1) = color.A;
+                            break;
+                        case Graphics::ColorMode::Grayscale:
+                            (*this)(x, y, 0) = color.Luminance();
+                            break;
+                        case Graphics::ColorMode::RGB:
+                            (*this)(x, y, 0) = color.R;
+                            (*this)(x, y, 1) = color.G;
+                            (*this)(x, y, 2) = color.B;
+                            break;
+                        case Graphics::ColorMode::BGR:
+                            (*this)(x, y, 2) = color.R;
+                            (*this)(x, y, 1) = color.G;
+                            (*this)(x, y, 0) = color.B;
+                            break;
+                        case Graphics::ColorMode::RGBA:
+                            (*this)(x, y, 0) = color.R;
+                            (*this)(x, y, 1) = color.G;
+                            (*this)(x, y, 2) = color.B;
+                            (*this)(x, y, 3) = color.A;
+                            break;
+                        case Graphics::ColorMode::BGRA:
+                            (*this)(x, y, 2) = color.R;
+                            (*this)(x, y, 1) = color.G;
+                            (*this)(x, y, 0) = color.B;
+                            (*this)(x, y, 3) = color.A;
+                            break;
+                        default:
+                            ;
+                    }
                 }
             }
             
@@ -1856,6 +1933,89 @@ namespace Gorgon :: Containers {
             ///exists, the call will be ignored.
             void SetRGBAAt(Geometry::Point p, Graphics::RGBA color) {
                 SetRGBAAt(p.X, p.Y, color);
+            }
+
+            /// Converts this image to another image type
+            template <class U_>
+            basic_Image<U_> ConvertTo(bool fast = false) const {
+                basic_Image<U_> target(size, mode);
+
+                unsigned long total = GetTotalSize();
+                const T_* src = data;
+                U_* dst = target.RawData();
+
+                if constexpr (std::is_same_v<T_, U_>) {
+                    for(unsigned long i = 0; i < total; i++) {
+                        dst[i] = src[i];
+                    }
+                }
+                else if constexpr (std::is_floating_point_v<T_> && std::is_integral_v<U_>) {
+                    float max_val = static_cast<float>(std::numeric_limits<U_>::max());
+                    if (fast) {
+                        for(unsigned long i = 0; i < total; i++) {
+                            dst[i] = static_cast<U_>(src[i] * max_val);
+                        }
+                    } else {
+                        for(unsigned long i = 0; i < total; i++) {
+                            float v = std::round(src[i] * max_val);
+                            dst[i] = static_cast<U_>(Clamp(v, 0.0f, max_val));
+                        }
+                    }
+                }
+                else if constexpr (std::is_integral_v<T_> && std::is_floating_point_v<U_>) {
+                    float max_val = static_cast<float>(std::numeric_limits<T_>::max());
+                    for(unsigned long i = 0; i < total; i++) {
+                        dst[i] = static_cast<U_>(src[i] / max_val);
+                    }
+                }
+                else {
+                    for(unsigned long i = 0; i < total; i++) {
+                        dst[i] = static_cast<U_>(src[i]);
+                    }
+                }
+
+                return target;
+            }
+
+            /// Normalizes the floating point image to range 0-1
+            void Normalize(NormalizeNegative neg = NormalizeNegative::Clamp, NormalizeFit fit = NormalizeFit::Clamp) {
+                if constexpr (std::is_floating_point_v<T_>) {
+                    unsigned long total = GetTotalSize();
+                    if (total == 0) return;
+
+                    float max_val = 0.0f;
+                    
+                    if (fit == NormalizeFit::Stretch) {
+                        for(unsigned long i = 0; i < total; i++) {
+                            float v = static_cast<float>(data[i]);
+                            if (neg == NormalizeNegative::Abs) {
+                                if (v < 0.0f) v = -v;
+                            } else {
+                                if (v < 0.0f) v = 0.0f;
+                            }
+                            if (v > max_val) max_val = v;
+                        }
+                    }
+
+                    for(unsigned long i = 0; i < total; i++) {
+                        float v = static_cast<float>(data[i]);
+                        
+                        if (neg == NormalizeNegative::Abs) {
+                            if (v < 0.0f) v = -v;
+                        } else {
+                            if (v < 0.0f) v = 0.0f;
+                        }
+
+                        if (fit == NormalizeFit::Stretch) {
+                            if (max_val > 0.0f) v /= max_val;
+                            else v = 0.0f;
+                        } else {
+                            if (v > 1.0f) v = 1.0f;
+                        }
+
+                        data[i] = static_cast<T_>(v);
+                    }
+                }
             }
         
             /// Returns the size of the image
@@ -1956,5 +2116,6 @@ namespace Gorgon :: Containers {
         
 
         using Image = basic_Image<Byte>;
+        using ImageF = basic_Image<float>;
 
     }
